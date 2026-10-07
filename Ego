@@ -1,0 +1,407 @@
+--========================================================
+--                         EGO
+--       CHAT • TITLES • GLOBAL • ANNOUNCEMENT • BAN
+--========================================================
+
+local Players = game:GetService("Players")
+local TextChatService = game:GetService("TextChatService")
+local MessagingService = game:GetService("MessagingService")
+local DataStoreService = game:GetService("DataStoreService")
+
+local BanStore = DataStoreService:GetDataStore("EGO_BANS_V3")
+local TitleStore = DataStoreService:GetDataStore("EGO_TITLES_V3")
+
+local GLOBAL_TOPIC = "EGO_GLOBAL_V3"
+
+--========================================================
+-- TITLES
+--========================================================
+
+local TITLES = {
+	"creator",
+	"owner",
+	"disbander",
+	"admin",
+	"staff",
+	"hacker",
+	"दानव",
+	"खलनायक",
+	"aukat ke bahar",
+	"hunter",
+	"gojo",
+	"Sukuna",
+	"og",
+	"daddy",
+	"her",
+	"his",
+	"architect",
+	"badnam",
+}
+
+local TITLE_LOOKUP = {}
+
+for _, title in ipairs(TITLES) do
+	TITLE_LOOKUP[string.lower(title)] = title
+end
+
+local function isCreator(player)
+	return player.UserId == game.CreatorId
+end
+
+local function getTitle(player)
+	return player:GetAttribute("EGO_Title") or ""
+end
+
+--========================================================
+-- CHAT DISPLAY
+--========================================================
+
+local function getGeneralChannel()
+	return TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+end
+
+local function display(text)
+	local channel = getGeneralChannel()
+
+	if channel then
+		channel:DisplaySystemMessage(text)
+	end
+end
+
+--========================================================
+-- CREATE COMMAND
+--========================================================
+
+local function createCommand(name, alias, secondAlias)
+	local command = Instance.new("TextChatCommand")
+	command.Name = name
+	command.PrimaryAlias = alias
+
+	if secondAlias then
+		command.SecondaryAlias = secondAlias
+	end
+
+	command.Parent = TextChatService
+
+	return command
+end
+
+--========================================================
+-- SERVER CHAT
+-- /server message
+-- /s message
+--========================================================
+
+local ServerCommand = createCommand(
+	"EGO_ServerChat",
+	"/server",
+	"/s"
+)
+
+ServerCommand.Triggered:Connect(function(source, rawText)
+
+	local player = Players:GetPlayerByUserId(source.UserId)
+	if not player then return end
+
+	local message = rawText:gsub("^%S+%s*", "", 1)
+
+	if message == "" then return end
+
+	display(
+		"<font color='#00BFFF'><b>[SERVER]</b></font> " ..
+		"<font color='#FFD700'>[" .. getTitle(player) .. "]</font> " ..
+		"<b>" .. player.DisplayName .. ":</b> " ..
+		message
+	)
+end)
+
+--========================================================
+-- GLOBAL CHAT
+-- /global message
+-- /g message
+--========================================================
+
+local GlobalCommand = createCommand(
+	"EGO_GlobalChat",
+	"/global",
+	"/g"
+)
+
+GlobalCommand.Triggered:Connect(function(source, rawText)
+
+	local player = Players:GetPlayerByUserId(source.UserId)
+	if not player then return end
+
+	local message = rawText:gsub("^%S+%s*", "", 1)
+
+	if message == "" then return end
+
+	local data = {
+		Type = "CHAT",
+		Name = player.DisplayName,
+		Title = getTitle(player),
+		Message = message
+	}
+
+	pcall(function()
+		MessagingService:PublishAsync(GLOBAL_TOPIC, data)
+	end)
+end)
+
+--========================================================
+-- GLOBAL MESSAGE RECEIVER
+--========================================================
+
+pcall(function()
+
+	MessagingService:SubscribeAsync(
+		GLOBAL_TOPIC,
+		function(packet)
+
+			local data = packet.Data
+
+			if typeof(data) ~= "table" then
+				return
+			end
+
+			if data.Type == "CHAT" then
+
+				display(
+					"<font color='#FF4444'><b>[GLOBAL]</b></font> " ..
+					"<font color='#FFD700'>[" ..
+					(data.Title or "") ..
+					"]</font> " ..
+					"<b>" ..
+					(data.Name or "Player") ..
+					":</b> " ..
+					(data.Message or "")
+				)
+
+			elseif data.Type == "ANNOUNCEMENT" then
+
+				display(
+					"<font color='#FF4444'><b>🌎 GLOBAL ANNOUNCEMENT</b></font>\n" ..
+					"<font color='#FFFFFF'>" ..
+					(data.Message or "") ..
+					"</font>"
+				)
+			end
+		end
+	)
+
+end)
+
+--========================================================
+-- SERVER ANNOUNCEMENT
+-- /announce message
+-- /ann message
+-- CREATOR ONLY
+--========================================================
+
+local AnnouncementCommand = createCommand(
+	"EGO_Announcement",
+	"/announce",
+	"/ann"
+)
+
+AnnouncementCommand.Triggered:Connect(function(source, rawText)
+
+	local player = Players:GetPlayerByUserId(source.UserId)
+
+	if not player or not isCreator(player) then
+		return
+	end
+
+	local message = rawText:gsub("^%S+%s*", "", 1)
+
+	if message == "" then return end
+
+	display(
+		"<font color='#FFD700'><b>📢 ANNOUNCEMENT</b></font>\n" ..
+		"<font color='#FFFFFF'>" ..
+		message ..
+		"</font>"
+	)
+end)
+
+--========================================================
+-- GLOBAL ANNOUNCEMENT
+-- /gannounce message
+-- /gann message
+-- CREATOR ONLY
+--========================================================
+
+local GlobalAnnouncementCommand = createCommand(
+	"EGO_GlobalAnnouncement",
+	"/gannounce",
+	"/gann"
+)
+
+GlobalAnnouncementCommand.Triggered:Connect(function(source, rawText)
+
+	local player = Players:GetPlayerByUserId(source.UserId)
+
+	if not player or not isCreator(player) then
+		return
+	end
+
+	local message = rawText:gsub("^%S+%s*", "", 1)
+
+	if message == "" then return end
+
+	pcall(function()
+
+		MessagingService:PublishAsync(
+			GLOBAL_TOPIC,
+			{
+				Type = "ANNOUNCEMENT",
+				Message = message
+			}
+		)
+
+	end)
+end)
+
+--========================================================
+-- GIVE TITLE
+-- /title PlayerName Title
+-- CREATOR ONLY
+--========================================================
+
+local TitleCommand = createCommand(
+	"EGO_Title",
+	"/title"
+)
+
+TitleCommand.Triggered:Connect(function(source, rawText)
+
+	local creator = Players:GetPlayerByUserId(source.UserId)
+
+	-- ONLY CREATOR
+	if not creator or not isCreator(creator) then
+		return
+	end
+
+	local args = string.split(rawText, " ")
+
+	-- /title PlayerName Title
+	if #args < 3 then
+		display(
+			"<font color='#FF5555'>Usage: /title PlayerName Title</font>"
+		)
+		return
+	end
+
+	table.remove(args, 1)
+
+	local targetName = args[1]
+	table.remove(args, 1)
+
+	local requestedTitle = table.concat(args, " ")
+
+	local targetTitle =
+		TITLE_LOOKUP[string.lower(requestedTitle)]
+
+	if not targetTitle then
+		display(
+			"<font color='#FF5555'>Invalid EGO title.</font>"
+		)
+		return
+	end
+
+	local targetPlayer
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if string.lower(player.Name) == string.lower(targetName)
+			or string.lower(player.DisplayName) == string.lower(targetName) then
+
+			targetPlayer = player
+			break
+		end
+	end
+
+	if not targetPlayer then
+		display(
+			"<font color='#FF5555'>Player not found.</font>"
+		)
+		return
+	end
+
+	targetPlayer:SetAttribute("EGO_Title", targetTitle)
+
+	pcall(function()
+		TitleStore:SetAsync(
+			tostring(targetPlayer.UserId),
+			targetTitle
+		)
+	end)
+
+	display(
+		"<font color='#FFD700'><b>[EGO]</b></font> " ..
+		"Title <b>" .. targetTitle .. "</b> given to " ..
+		"<b>" .. targetPlayer.DisplayName .. "</b>."
+	)
+end)
+
+--========================================================
+-- REMOVE TITLE
+-- /removetitle PlayerName
+-- CREATOR ONLY
+--========================================================
+
+local RemoveTitleCommand = createCommand(
+	"EGO_RemoveTitle",
+	"/removetitle"
+)
+
+RemoveTitleCommand.Triggered:Connect(function(source, rawText)
+
+	local creator = Players:GetPlayerByUserId(source.UserId)
+
+	if not creator or not isCreator(creator) then
+		return
+	end
+
+	local targetName = rawText:gsub("^%S+%s*", "", 1)
+
+	if targetName == "" then return end
+
+	for _, player in ipairs(Players:GetPlayers()) do
+
+		if string.lower(player.Name) == string.lower(targetName)
+			or string.lower(player.DisplayName) == string.lower(targetName) then
+
+			player:SetAttribute("EGO_Title", "")
+
+			pcall(function()
+				TitleStore:RemoveAsync(
+					tostring(player.UserId)
+				)
+			end)
+
+			display(
+				"<font color='#FFD700'><b>[EGO]</b></font> Title removed from " ..
+				player.DisplayName
+			)
+
+			return
+		end
+	end
+end)
+
+--========================================================
+-- BAN
+-- /ban PlayerName
+-- CREATOR ONLY
+--========================================================
+
+local BanCommand = createCommand(
+	"EGO_Ban",
+	"/ban"
+)
+
+BanCommand.Triggered:Connect(function(source, rawText)
+
+	local creator = Players:GetPlayerByUserId(source.UserId)
+
+	--
